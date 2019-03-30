@@ -36,3 +36,7 @@ export const getNewObj = (old, o) => {
         ...o
     };
 };
+
+export const getNow = () => {
+    return Date.now();
+};
