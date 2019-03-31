@@ -44,6 +44,23 @@ module.exports = merge(common, {
                     },
                     'sass-loader'
                 ]
+            },
+            {
+                test: /\.css$/,
+                include: includePath,
+                exclude: excludePath,
+                use: [
+                    isPrd ? MiniCssExtractPlugin.loader : 'style-loader',
+                    'css-loader',
+                    {
+                        loader: 'postcss-loader',
+                        options: {
+                            plugins: [
+                                require('autoprefixer')
+                            ]
+                        }
+                    }
+                ]
             }
         ]
     },

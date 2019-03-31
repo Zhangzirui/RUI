@@ -1,0 +1,16 @@
+.bgText {
+    position: absolute;
+    width: 100%;
+    line-height: 40px;
+    font-size: 14px;
+    text-align: center;
+    color: #888;
+};
+
+.topText {
+    top: 0;
+}
+
+.bottomText {
+    bottom: 0;
+}

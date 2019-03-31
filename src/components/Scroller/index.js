@@ -1,10 +1,10 @@
 import React, {Component} from 'react';
 import {getNewObj, getAngle, getStylePre, getNow} from '../../util/scrollUtil';
 import {Animate, Ease} from '../../util/animate';
+import './scroller.css';
 
 const LIMIT_VERTICAL_ANGLE = 60; // 上下滑动的最大角度
 const LIMIT_HORIZONTAL_ANGLE = 30; // 左右滑动的最小角度
-const TOUCH_INFO_LENGTH = 60; // 限制 touchInfo 数组的长度
 
 export default class Scroller extends Component {
     constructor() {
@@ -14,6 +14,7 @@ export default class Scroller extends Component {
     static contentInfo = {}
 
     componentWillMount() {
+        this._initDefaultConfig();
         this._resetProps();
         this.animate = new Animate({
             ease: Ease.circular.fn,
@@ -32,14 +33,17 @@ export default class Scroller extends Component {
         };
     }
 
-    _resetProps() {
-        const {children, containerExtraStyle, isTranslate} = this.props;
+
+    /**
+     * 初始化默认配置
+     *
+     * @memberof Scroller
+     */
+    _initDefaultConfig() {
+        const {children, isTranslate} = this.props;
 
         // this.wraper = getWraper(children);
 
-        this.containerStyle = Object.assign({}, {
-            overflow: 'hidden'
-        }, containerExtraStyle);
         this.contentWrapStyle = {}; // 内容外面包一层 div 的样式
         this.transformKey = getStylePre('transform');
         this.isTranslate = isTranslate;
@@ -51,8 +55,26 @@ export default class Scroller extends Component {
         this.preventTouchMove = false; // 阻止 touchMove 事件
         this.preventTouchEnd = false; // 阻止 touchEnd 时间
         this.momentumLimitDis = 15; // 产生惯性滚动的位移临界值
+        this.scrollWrapStyle = {
+            position: 'relative',
+            backgroundColor: '#fff',
+            overflow: 'hidden'
+        };
+        this.contentWrapStyle = {
+            [this.transformKey]: 'translate3d(0px, 0px, 0px)'
+        };
     }
 
+    /**
+     * 根据传入的属性来重置配置
+     *
+     * @memberof Scroller
+     */
+    _resetProps() {
+        const {containerExtraStyle} = this.props;
+
+        this.scrollWrapStyle = Object.assign({}, this.scrollWrapStyle, containerExtraStyle);
+    }
 
     onTouchStart = (e) => {
         this._prevent(e);
@@ -337,7 +359,9 @@ export default class Scroller extends Component {
     }
 
     render() {
-        const {containerExtraClass, children, ref} = this.props;
+        const {containerExtraClass, children, bounce, bgTopText, bgBottomText} = this.props;
+        console.log('render-=========:');
+        console.log(this.props);
         return (
             <div
                 ref={this.getRef}
@@ -346,13 +370,25 @@ export default class Scroller extends Component {
                 onTouchMove={this.onTouchMove}
                 onTouchEnd={this.onTouchEnd}
                 className={containerExtraClass}
-                style={this.containerStyle}>
+                style={this.scrollWrapStyle}>
+                {
+                    bounce && bgTopText && (
+                        <div className="bgText topText">{bgTopText}</div>
+                    )
+                }
+                {
+                    bounce && bgBottomText && (
+                        <div className="bgText bottomText">{bgTopText}</div>
+                    )
+                }
                 <div
-                    ref={(node) => this.contentWrapDom = node}>
+                    ref={(node) => this.contentWrapDom = node}
+                    style={this.contentWrapStyle}>
                     {
                         children
                     }
                 </div>
+                
             </div>
         );
     }
@@ -369,5 +405,7 @@ Scroller.defaultProps = {
     preventDefault: false,
     stopPropagation: true,
     bounce: true, // 是否允许弹性滚动
-    momentum: true // 是否允许惯性滚动
+    momentum: true, // 是否允许惯性滚动
+    bgTopText: '', // 开启弹性滚动后，背景上方提示文案
+    bgBottomText: '' // 开启弹性滚动后，背景下方提示文案
 };
