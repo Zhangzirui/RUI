@@ -14,3 +14,18 @@
 .bottomText {
     bottom: 0;
 }
+
+.scrollWrapStyle {
+    position: relative;
+    background-color: #fff;
+    overflow: hidden;
+}
+
+.stickyHeader {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+}
+

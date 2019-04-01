@@ -1,26 +1,23 @@
 import React, {Component} from 'react';
 import {getNewObj, getAngle, getStylePre, getNow} from '../../util/scrollUtil';
 import {Animate, Ease} from '../../util/animate';
+import Log from '../../util/log';
+import Validate from '../../util/validate';
 import './scroller.css';
 
 const LIMIT_VERTICAL_ANGLE = 60; // 上下滑动的最大角度
 const LIMIT_HORIZONTAL_ANGLE = 30; // 左右滑动的最小角度
 
 export default class Scroller extends Component {
-    constructor() {
+    constructor(props) {
         super();
+        this._initDefaultConfig(props);
+        this._resetProps(props);
     }
 
-    static contentInfo = {}
-
-    componentWillMount() {
-        this._initDefaultConfig();
-        this._resetProps();
-        this.animate = new Animate({
-            ease: Ease.circular.fn,
-            duration: 300,
-            animateFn: () => {}
-        });
+    state = {
+        stickyHeaderShow: false,
+        activeHeaderIndex: -1
     }
 
     componentDidMount() {
@@ -31,16 +28,16 @@ export default class Scroller extends Component {
             contentWidth: this.contentWrapDom.offsetWidth,
             maxScroll: this.props.horizontal ? this.contentWrapDom.offsetWidth - this.scrollerDom.offsetWidth : this.contentWrapDom.offsetHeight - this.scrollerDom.offsetHeight
         };
+        this._dealStickyHeader();
     }
-
 
     /**
      * 初始化默认配置
      *
      * @memberof Scroller
      */
-    _initDefaultConfig() {
-        const {children, isTranslate} = this.props;
+    _initDefaultConfig(props) {
+        const {children, isTranslate} = props;
 
         // this.wraper = getWraper(children);
 
@@ -52,17 +49,19 @@ export default class Scroller extends Component {
         }
         this.x = 0;
         this.y = 0;
+        this.stickyHeaderContent = [];
         this.preventTouchMove = false; // 阻止 touchMove 事件
         this.preventTouchEnd = false; // 阻止 touchEnd 时间
         this.momentumLimitDis = 15; // 产生惯性滚动的位移临界值
-        this.scrollWrapStyle = {
-            position: 'relative',
-            backgroundColor: '#fff',
-            overflow: 'hidden'
+        this.contentWrapStyle = { // contentWrap 的默认样式
+            [this.transformKey]: 'translate3d(0px, 0px, 0px)',
+            // backgroundColor: '#fff'
         };
-        this.contentWrapStyle = {
-            [this.transformKey]: 'translate3d(0px, 0px, 0px)'
-        };
+        this.animate = new Animate({
+            ease: Ease.circular.fn,
+            duration: 300,
+            animateFn: () => {}
+        });
     }
 
     /**
@@ -70,10 +69,35 @@ export default class Scroller extends Component {
      *
      * @memberof Scroller
      */
-    _resetProps() {
-        const {containerExtraStyle} = this.props;
+    _resetProps(props) {
+        const {containerExtraStyle} = props;
+    }
 
-        this.scrollWrapStyle = Object.assign({}, this.scrollWrapStyle, containerExtraStyle);
+    _dealStickyHeader() {
+        const {children, stickyHeaderIndex, stickyOffsetTop} = this.props;
+
+        if (!Array.isArray(stickyHeaderIndex)) {
+            Log.attributeError('stickyHeaderIndex', stickyHeaderIndex);
+        }
+
+        if (stickyHeaderIndex.length === 0) {
+            return;
+        }
+
+        if (Math.max(...stickyHeaderIndex) > children.length) {
+            Log.outOfRangeError('stickyHeaderIndex');
+        }
+
+        console.log('sticky Header');
+        console.log(this.contentWrapDom);
+        stickyHeaderIndex.map((item) => {
+            const sticky = {
+                offsetTop: this.contentWrapDom.children[item].offsetTop - stickyOffsetTop,
+                content: React.cloneElement(children[item])
+            };
+
+            this.stickyHeaderContent.push(sticky);
+        });
     }
 
     onTouchStart = (e) => {
@@ -129,6 +153,8 @@ export default class Scroller extends Component {
             this._move(deltaX);
             this.delta = deltaX;
         }
+
+        this._refreshSticky();
 
         if (Math.abs(this.delta) > this.momentumLimitDis) {
             console.log('trigger end');
@@ -215,6 +241,39 @@ export default class Scroller extends Component {
         }
     }
 
+    _refreshSticky() {
+        if (this.stickyHeaderContent.length === 0) {
+            return;
+        }
+        const {activeHeaderIndex, stickyHeaderShow} = this.state;
+        const val = this.props.horizontal ? Math.abs(this.x) : Math.abs(this.y);
+        let activeIndex = -1;
+
+        this.stickyHeaderContent.some(({offsetTop}, index) => {
+            if (val > offsetTop) {
+                activeIndex = index;
+                return true;
+            }
+            return false;
+        });
+
+        if (activeIndex !== -1 && activeIndex !== activeHeaderIndex) {
+            this.setState({
+                activeHeaderIndex: activeIndex
+            });
+
+            if (!stickyHeaderShow) {
+                this.setState({
+                    stickyHeaderShow: true
+                });
+            }
+        } else if (activeIndex === -1) {
+            this.setState({
+                stickyHeaderShow: false,
+                activeHeaderIndex: -1
+            });
+        }
+    }
 
     _move(delta) {
         console.log('delta:', delta);
@@ -359,18 +418,20 @@ export default class Scroller extends Component {
     }
 
     render() {
-        const {containerExtraClass, children, bounce, bgTopText, bgBottomText} = this.props;
-        console.log('render-=========:');
-        console.log(this.props);
+        const {containerExtraClass, containerExtraStyle, stickyOffsetTop, children, bounce, bgTopText, bgBottomText} = this.props;
+        const {stickyHeaderShow, activeHeaderIndex} = this.state;
+
+        console.log('content: ', this.stickyHeaderContent);
+
         return (
             <div
+                className={`scrollWrapStyle ${containerExtraClass}`}
                 ref={this.getRef}
                 onClick={this.onClick}
                 onTouchStart={this.onTouchStart}
                 onTouchMove={this.onTouchMove}
                 onTouchEnd={this.onTouchEnd}
-                className={containerExtraClass}
-                style={this.scrollWrapStyle}>
+                style={containerExtraStyle}>
                 {
                     bounce && bgTopText && (
                         <div className="bgText topText">{bgTopText}</div>
@@ -381,6 +442,18 @@ export default class Scroller extends Component {
                         <div className="bgText bottomText">{bgTopText}</div>
                     )
                 }
+                {
+                    stickyHeaderShow && (
+                        <div
+                            className="stickyHeader"
+                            // ref={(node) => this.stickyWrap = node}
+                            style={{
+                                top: stickyOffsetTop
+                            }}>
+                            {this.stickyHeaderContent[activeHeaderIndex].content}
+                        </div>
+                    )
+                }
                 <div
                     ref={(node) => this.contentWrapDom = node}
                     style={this.contentWrapStyle}>
@@ -388,7 +461,6 @@ export default class Scroller extends Component {
                         children
                     }
                 </div>
-                
             </div>
         );
     }
@@ -407,5 +479,7 @@ Scroller.defaultProps = {
     bounce: true, // 是否允许弹性滚动
     momentum: true, // 是否允许惯性滚动
     bgTopText: '', // 开启弹性滚动后，背景上方提示文案
-    bgBottomText: '' // 开启弹性滚动后，背景下方提示文案
+    bgBottomText: '', // 开启弹性滚动后，背景下方提示文案
+    stickyHeaderIndex: [], // 固定头部索引
+    stickyOffsetTop: 0
 };
