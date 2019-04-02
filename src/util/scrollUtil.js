@@ -14,7 +14,7 @@ export const getAngle = (xDistance, yDistance) => {
     return 180 * Math.atan2(yDistance, xDistance) / Math.PI;
 };
 
-// 获取 translate 样式的兼容前缀
+// 获取某个css样式属性的兼容前缀
 export const getStylePre = (style) => {
     const _style = upperFirstChar(style);
     let pre = '';
