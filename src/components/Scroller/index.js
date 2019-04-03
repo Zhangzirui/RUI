@@ -34,6 +34,9 @@ export default class Scroller extends Component {
         }, {passive: false});
     }
 
+    componentWillUnmount() {
+    }
+
     /**
      * 初始化默认配置
      *
@@ -49,14 +52,20 @@ export default class Scroller extends Component {
         this.stickyHeaderContent = [];
         this.preventTouchMove = false; // 阻止 touchMove 事件
         this.preventTouchEnd = false; // 阻止 touchEnd 时间
-        this.momentumLimitDis = 40; // 产生惯性滚动的位移临界值
+        this.momentumLimitDis = 20; // 判定为惯性滚动的位移临界值
+        this.friction = 0.006; // 惯性滚动时的摩擦系数
+        this.bounceTime = 500; // 弹性动画所需时间
+        this.momentumTime = 1000; // 惯性动画所需时间
+        this.specMomentumTime = 300; // 可以引发弹性滚动行为造成的惯性滚动所需时间 （即滚动到边界时，快速滑动的动画时间）
+        this.momentumOutDis = 70; // 可以引发弹性滚动行为造成的惯性滚动最大越界距离 （即滚动到边界时，快速滑动允许超越的边界距离）
+        this.momentumLimitTime = 300; // 判定为惯性滚动的最大临界时间
         this.stickyHeaderScroll = false; // sticky header 是否允许滚动
         this.contentWrapStyle = { // contentWrap 的默认样式
             [this.transformKey]: 'translate3d(0px, 0px, 0px)',
             // backgroundColor: '#fff'
         };
         this.animate = new Animate({
-            ease: Ease.circular.fn,
+            ease: Ease.swipe.fn,
             duration: 300,
             animateFn: () => {}
         });
@@ -75,6 +84,13 @@ export default class Scroller extends Component {
         }
     }
 
+
+    /**
+     * 初始化 stickyHeader 数据
+     *
+     * @returns
+     * @memberof Scroller
+     */
     _dealStickyHeader() {
         const {children, stickyHeaderIndex, stickyOffsetTop} = this.props;
 
@@ -107,7 +123,6 @@ export default class Scroller extends Component {
         this._prevent(e);
         const point = e.touches ? e.touches[0] : e;
         this.touchInfo = [];
-        this.scrollStartTime = getNow();
         this.pointX = point.pageX;
         this.pointY = point.pageY;
 
@@ -116,6 +131,11 @@ export default class Scroller extends Component {
 
         this.distanceX = 0;
         this.distanceY = 0;
+
+        // 关于计算惯性滚动的
+        this.mStartTime = getNow();
+        this.mX = this.x;
+        this.mY = this.y;
     }
 
     onTouchMove = (e) => {
@@ -137,8 +157,14 @@ export default class Scroller extends Component {
 
         const distanceX = Math.abs(this.distanceX);
         const distanceY = Math.abs(this.distanceY);
+        const currentTime = getNow();
 
-        this.scrollMoveTime = getNow();
+        if (currentTime - this.mStartTime >= this.momentumLimitTime) { // 将一次连续的滚动的时间以momentumLimitTime进行分割
+            this.mStartTime = currentTime;
+            this.mX = this.x;
+            this.mY = this.y;
+        }
+
         this.angle = getAngle(distanceY, distanceX);
         if (distanceX < 10 && distanceY < 10) { // 距离太短不形成触摸条件
             return;
@@ -159,6 +185,7 @@ export default class Scroller extends Component {
         // this._refreshSticky();
 
         if (Math.abs(this.delta) > this.momentumLimitDis) {
+            console.log('强行触发end');
             this.preventTouchMove = true;
             this.onTouchEnd(e);
         }
@@ -169,27 +196,38 @@ export default class Scroller extends Component {
             return;
         }
         this._prevent(e);
-        this.scrollEndTime = getNow();
         this._dealEndEvent()
             .then(() => {
-                this._elasticity();
+                this._elasticity(this.bounceTime);
             });
     }
 
+
+    /**
+     * 判断是否进行惯性滚动
+     *
+     * @returns
+     * @memberof Scroller
+     */
     _dealEndEvent() {
         const {horizontal} = this.props;
 
-        if (Math.abs(this.delta) < this.momentumLimitDis) { // 一次位移的距离小于限定距离，判定为非惯性滚动
-            return Promise.resolve();
+        this.mEndTime = getNow();
+
+        const duration = this.mEndTime - this.mStartTime;
+        const delta = horizontal ? this.x - this.mX : this.y - this.mY;
+        const currentVal = horizontal ? this.x : this.y;
+
+        console.log('duration: ', duration);
+        console.log('delta: ', delta);
+
+        if (duration < this.momentumLimitTime && Math.max(Math.abs(delta), Math.abs(this.delta)) > this.momentumLimitDis) {
+            this.preventTouchEnd = true;
+            return this._momentum(currentVal, delta, duration);
         }
 
-        const currentVal = horizontal ? this.x : this.y;
-        const duration = this.scrollEndTime - this.scrollMoveTime;
-
-        this.preventTouchEnd = true;
-        return this._momentum(currentVal, this.delta, duration);
+        return Promise.resolve();
     }
-
 
     /**
      * 处理惯性滚动
@@ -197,26 +235,30 @@ export default class Scroller extends Component {
      * @param {*} currentVal 当前的位置
      * @param {*} delta 两次move间的距离
      * @param {*} duration 两次move间的时间
+     * @returns
      * @memberof Scroller
      */
     _momentum(currentVal, delta, duration) {
         const {horizontal, bounce} = this.props;
         const {maxScroll} = this.scrollInfo;
         const speed = Math.abs(delta / duration);
-        const friction = 0.1; // 摩擦系数
-        let dis = currentVal + speed / friction * (delta > 0 ? 1 : -1); // delta 小于 0 表示向下/右滚
+
+        let dis = currentVal + speed / this.friction * (delta > 0 ? 1 : -1); // delta 小于 0 表示向下/右滚
+        let scrollTime = this.specMomentumTime;
 
         if (dis > 0) {
-            dis = bounce ? Math.min(this._getDis(0, dis - 0), 50) : 0;
+            dis = bounce ? Math.min(this._getDis(0, dis - 0), this.momentumOutDis) : 0;
         } else if (dis < -maxScroll && delta < 0) { // 超过最大范围并且向下/右滚
-            dis = bounce ? Math.max(this._getDis(-maxScroll, dis + maxScroll), -maxScroll - 50) : -maxScroll;
+            dis = bounce ? Math.max(this._getDis(-maxScroll, dis + maxScroll), -maxScroll - this.momentumOutDis) : -maxScroll;
+        } else {
+            scrollTime = this.momentumTime;
         }
 
         return this.scrollTo((horizontal ? {
             x: dis
         } : {
             y: dis
-        }), 300);
+        }), scrollTime);
     }
 
 
@@ -227,7 +269,7 @@ export default class Scroller extends Component {
      * @param {*} ease
      * @memberof Scroller
      */
-    _elasticity(duration, ease) {
+    _elasticity(duration, ease = Ease.bounce.fn) {
         if (this._judgeRange() && this.props.bounce) {
             this.outOfRange = false;
             if (this.horizontal) {
@@ -345,7 +387,6 @@ export default class Scroller extends Component {
         let res = val;
 
         if (val + delta > 0) { // 拉到上/左边界
-            console.log('condition 1');
             if (!bounce) {
                 res = 0;
             } else {
@@ -356,7 +397,6 @@ export default class Scroller extends Component {
                 };
             }
         } else if (val + delta < -maxScroll) { // 拉到下/右边界
-            console.log('condition 2');
             if (!bounce) {
                 res = -maxScroll;
             } else {
@@ -367,7 +407,6 @@ export default class Scroller extends Component {
                 };
             }
         } else {
-            console.log('condition 3');
             res = val + delta;
         }
 
@@ -429,7 +468,7 @@ export default class Scroller extends Component {
         this.scrollerDom = node;
     }
 
-    scrollTo({x, y}, duration = 500, ease = Ease.circular.fn) {
+    scrollTo({x, y}, duration = 500, ease = Ease.swipe.fn) {
         let val = y;
         let startVal = this.y;
         if (this.horizontal) {
